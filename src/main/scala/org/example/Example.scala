@@ -18,6 +18,7 @@ import concurrent.ExecutionContext.Implicits.global
 import concurrent.stm._
 
 case class SimulatedExecutorException(message: String) extends RuntimeException(message)
+case class StorageNotAvailableException(message: String) extends RuntimeException(message)
 
 /** The executor executes received tasks
   */
@@ -78,20 +79,31 @@ class Coordinator(nrOfExecutors: Int) extends Actor with ActorLogging {
     waitingClients = List.empty
   ))(context.system)
 
+  val storage = new {
+    def writeOrThrowInstantly(uuid: String, status: String) {
+      if (math.random < 0.5) {
+        throw StorageNotAvailableException("Simulated exception")
+      }
+    }
+    def reliablyDeferredWrite(uuid: String, status: String) {
+      // buffer and write
+    }
+  }
+
   def receive = {
     case coordinated @ Coordinated(TryDequeueingTask) =>
       status.send { status =>
         if (status.numRunningExecutors < nrOfExecutors) {
           status.remainingTasks match {
             case head :: tail =>
-              log.debug("Reliably change the job status from `pending` to `queueing`: " + head)
               coordinated.atomic { implicit txn =>
                 Txn.afterCommit { txnStatus =>
                   log.debug("Reliably change the job status from `queueing` to `running`: " + head)
+                  storage.reliablyDeferredWrite(head.uuid, "running")
                 }
                 Txn.afterRollback { txnStatus =>
                   log.debug("Reliably rolls back the change to the job status: " + head)
-
+                  storage.reliablyDeferredWrite(head.uuid, "pending")
                   log.debug("Retrying...")
                   implicit val timeout = Timeout(10 seconds)
                   self ! Coordinated(TryDequeueingTask)
@@ -99,6 +111,8 @@ class Coordinator(nrOfExecutors: Int) extends Actor with ActorLogging {
                 Txn.afterCompletion { txnStatus =>
                   log.debug("Completed task(it may be either finished or failed): " + head)
                 }
+                log.debug("Reliably change the job status from `pending` to `queueing`: " + head)
+                storage.writeOrThrowInstantly(head.uuid, "queueing")
                 router ! coordinated.coordinate(head)
                 implicit val timeout = Timeout(10 seconds)
                 self ! Coordinated(TryDequeueingTask)
