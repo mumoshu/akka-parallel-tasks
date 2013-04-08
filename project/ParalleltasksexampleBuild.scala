@@ -10,10 +10,10 @@ object ParalleltasksexampleBuild extends Build {
       name := "parallel-tasks-example",
       organization := "org.example",
       version := "0.1-SNAPSHOT",
-      scalaVersion := "2.9.2",
+      scalaVersion := "2.10.1",
       resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases",
-      libraryDependencies += "com.typesafe.akka" % "akka-actor" % "2.0.1",
-      libraryDependencies += "com.typesafe.akka" % "akka-agent" % "2.0.1"
+      libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.1.2",
+      libraryDependencies += "com.typesafe.akka" %% "akka-agent" % "2.1.2"
     )
   )
 }

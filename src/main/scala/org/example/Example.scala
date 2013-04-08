@@ -2,13 +2,13 @@ package org.example
 
 import akka.actor.{ActorRef, Actor, Props, ActorSystem}
 import akka.agent.Agent
-import akka.dispatch.{Await, Future}
 import akka.routing._
-import akka.util.Duration
-import akka.util.duration._
 import akka.util.Timeout
 // Needed for `?` method
 import akka.pattern.ask
+import concurrent.duration._
+import concurrent.{Await, Future}
+import concurrent.ExecutionContext.Implicits.global
 
 /** The executor executes received tasks
   */
@@ -134,13 +134,15 @@ object TestEnv {
 
   val msg = EnqueueTasks((1 to n).map(x => Task(n = x)).toList)
 
-  val future: Future[ClientMessage] = (master ? msg).onSuccess {
+  val future: Future[ClientMessage] = (master ? msg).mapTo[ClientMessage]
+  future.onSuccess {
     case AllTasksFinished =>
       println("onSuccess called with `AllTasksFinished`")
-  }.onFailure {
+  }
+  future.onFailure {
      case failure =>
        println("onFailure called with: " + failure)
-  }.mapTo[ClientMessage]
+  }
 
   val result = Await.result(future, timeout.duration)
 
