@@ -13,7 +13,8 @@ object ParalleltasksexampleBuild extends Build {
       scalaVersion := "2.10.1",
       resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases",
       libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.1.2",
-      libraryDependencies += "com.typesafe.akka" %% "akka-agent" % "2.1.2"
+      libraryDependencies += "com.typesafe.akka" %% "akka-agent" % "2.1.2",
+      libraryDependencies += "com.typesafe.akka" %% "akka-transactor" % "2.1.2"
     )
   )
 }

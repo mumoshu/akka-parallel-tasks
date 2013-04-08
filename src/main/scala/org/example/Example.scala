@@ -1,24 +1,46 @@
 package org.example
 
-import akka.actor.{ActorRef, Actor, Props, ActorSystem}
+import akka.actor._
 import akka.agent.Agent
 import akka.routing._
 import akka.util.Timeout
+import org.example.TaskFinished
+import org.example.EnqueueTasks
+import org.example.Status
+import org.example.Task
+
 // Needed for `?` method
 import akka.pattern.ask
+import akka.transactor._
 import concurrent.duration._
 import concurrent.{Await, Future}
 import concurrent.ExecutionContext.Implicits.global
+import concurrent.stm._
+
+case class SimulatedExecutorException(message: String) extends RuntimeException(message)
 
 /** The executor executes received tasks
   */
-class Executor extends Actor {
+class Executor extends Actor with ActorLogging {
   def receive = {
     case task : Task =>
       val processingTime = (math.random * 10000).toInt
       println("Executing task: " + task + ", should take " + processingTime + "ms")
       Thread.sleep(processingTime)
       sender ! TaskFinished(task)
+    case coordinated @ Coordinated(task: Task) =>
+      coordinated.atomic { implicit txn =>
+        val processingTime = (math.random * 10000).toInt
+        log.debug("Executing task: " + task + ", should take " + processingTime + "ms")
+        if (math.random < 0.5) {
+          throw new SimulatedExecutorException("Error just before executing task: " + task)
+        }
+        Txn.afterCommit { txnStatus =>
+          log.debug("Successfully started executing task")
+          Thread.sleep(processingTime)
+          sender ! TaskFinished(task)
+        }
+      }
   }
 }
 
@@ -45,7 +67,7 @@ case object AllTasksFinished extends ClientMessage
 
 /** The coordinator splits a set of tasks and passes each task to the available executor for parallel execution.
   */
-class Coordinator(nrOfExecutors: Int) extends Actor {
+class Coordinator(nrOfExecutors: Int) extends Actor with ActorLogging {
 
   val router = context.actorOf(Props[Executor].withRouter(SmallestMailboxRouter(nrOfInstances = nrOfExecutors)), name = "executorRouter")
 
@@ -57,6 +79,41 @@ class Coordinator(nrOfExecutors: Int) extends Actor {
   ))(context.system)
 
   def receive = {
+    case coordinated @ Coordinated(TryDequeueingTask) =>
+      status.send { status =>
+        if (status.numRunningExecutors < nrOfExecutors) {
+          status.remainingTasks match {
+            case head :: tail =>
+              log.debug("Reliably change the job status from `pending` to `queueing`: " + head)
+              coordinated.atomic { implicit txn =>
+                Txn.afterCommit { txnStatus =>
+                  log.debug("Reliably change the job status from `queueing` to `running`: " + head)
+                }
+                Txn.afterRollback { txnStatus =>
+                  log.debug("Reliably rolls back the change to the job status: " + head)
+
+                  log.debug("Retrying...")
+                  implicit val timeout = Timeout(10 seconds)
+                  self ! Coordinated(TryDequeueingTask)
+                }
+                Txn.afterCompletion { txnStatus =>
+                  log.debug("Completed task(it may be either finished or failed): " + head)
+                }
+                router ! coordinated.coordinate(head)
+                implicit val timeout = Timeout(10 seconds)
+                self ! Coordinated(TryDequeueingTask)
+                status.copy(
+                  remainingTasks = status.remainingTasks.filterNot(head ==),
+                  numRunningExecutors = status.numRunningExecutors + 1
+                )
+              }
+            case Nil =>
+              status
+          }
+        } else {
+          status
+        }
+      }
     case TryDequeueingTask =>
       status.send { status =>
         println("TryDequeueingTask")
@@ -88,7 +145,8 @@ class Coordinator(nrOfExecutors: Int) extends Actor {
 
         println("EnqueueTasks: " + tasks.size + " tasks")
         println("replyTo: " + replyTo)
-        self ! TryDequeueingTask
+        implicit val timeout = Timeout(10 seconds)
+        self ! Coordinated(TryDequeueingTask)
         status.copy(
           remainingTasks = status.remainingTasks ++ tasks,
           waitingClients = status.waitingClients :+ replyTo
