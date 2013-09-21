@@ -1,13 +1,9 @@
-package org.example
+package com.github.mumoshu.akka.examples.task_queue
 
 import akka.actor._
 import akka.agent.Agent
 import akka.routing._
 import akka.util.Timeout
-import org.example.TaskFinished
-import org.example.EnqueueTasks
-import org.example.Status
-import org.example.Task
 
 // Needed for `?` method
 import akka.pattern.ask

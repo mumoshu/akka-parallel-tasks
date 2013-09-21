@@ -1,14 +1,14 @@
 import sbt._
 import sbt.Keys._
 
-object ParalleltasksexampleBuild extends Build {
+object ProjectBuild extends Build {
 
   lazy val paralleltasksexample = Project(
     id = "parallel-tasks-example",
     base = file("."),
     settings = Project.defaultSettings ++ Seq(
       name := "parallel-tasks-example",
-      organization := "org.example",
+      organization := "com.github.mumoshu.akka.examples.task_queue",
       version := "0.1-SNAPSHOT",
       scalaVersion := "2.10.2",
       resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases",
