@@ -13,7 +13,7 @@ import org.example.Task
 import akka.pattern.ask
 import akka.transactor._
 import concurrent.duration._
-import concurrent.{Await, Future}
+import scala.concurrent.{ExecutionContext, Await, Future}
 import concurrent.ExecutionContext.Implicits.global
 import concurrent.stm._
 
@@ -68,7 +68,7 @@ case object AllTasksFinished extends ClientMessage
 
 /** The coordinator splits a set of tasks and passes each task to the available executor for parallel execution.
   */
-class Coordinator(nrOfExecutors: Int) extends Actor with ActorLogging {
+class Coordinator(nrOfExecutors: Int)(implicit executionContext: ExecutionContext) extends Actor with ActorLogging {
 
   val router = context.actorOf(Props[Executor].withRouter(SmallestMailboxRouter(nrOfInstances = nrOfExecutors)), name = "executorRouter")
 
@@ -77,7 +77,7 @@ class Coordinator(nrOfExecutors: Int) extends Actor with ActorLogging {
     remainingTasks = List.empty,
     numRunningExecutors = 0,
     waitingClients = List.empty
-  ))(context.system)
+  ))(executionContext)
 
   val storage = new {
     def writeOrThrowInstantly(uuid: String, status: String) {
