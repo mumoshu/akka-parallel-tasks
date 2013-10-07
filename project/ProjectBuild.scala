@@ -15,6 +15,7 @@ object ProjectBuild extends Build {
       libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.2.1",
       libraryDependencies += "com.typesafe.akka" %% "akka-agent" % "2.2.1",
       libraryDependencies += "com.typesafe.akka" %% "akka-transactor" % "2.2.1",
+      libraryDependencies += "com.typesafe.akka" %% "akka-testkit" % "2.2.1" % "test",
       libraryDependencies += "org.specs2" %% "specs2" % "2.2" % "test",
       libraryDependencies += "org.mockito" % "mockito-all" % "1.9.0" % "test",
       libraryDependencies += "org.hamcrest" % "hamcrest-all" % "1.3" % "test"
