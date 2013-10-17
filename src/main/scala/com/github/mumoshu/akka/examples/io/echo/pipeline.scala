@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import akka.util.ByteString
 import akka.io.IO
 import java.nio.ByteOrder
+import scala.util.Success
 
 // We cannot make this a Value class because it is unusable in event pipeline
 case class Echo(data: String)
@@ -47,20 +48,18 @@ trait EchoProtocol {
 }
 
 trait EchoInjector extends EchoProtocol {
-  val commandHandler: ActorRef
-  val eventHandler: ActorRef
+  def commandHandler: ActorRef
+  def eventHandler: ActorRef
   val injector = PipelineFactory.buildWithSinkFunctions(ctx, stages)(
     commandHandler ! _,
     eventHandler ! _
   )
 }
 
-class PipelineEchoServer(port: Int) extends Actor {
+class PipelineEchoServer(port: Int) extends Actor with ActorLogging {
 
   import Tcp._
   import context.system
-
-  val echoServer = context.actorOf(Props(new EchoServer))
 
   IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", port))
 
@@ -68,33 +67,42 @@ class PipelineEchoServer(port: Int) extends Actor {
     case b @ Bound(localAddress) =>
     case CommandFailed(_: Bind) => context stop self
     case c @ Connected(remote, local) =>
-      val handler = context.actorOf(Props(new PipelineEchoHandler(echoServer, self)))
       val connection = sender
+      val handler = context.actorOf(Props(new PipelineEchoHandler(connection) with ActorLogging))
       connection ! Register(handler)
   }
 
 }
 
-class PipelineEchoHandler(echoServer: ActorRef, echoActor: ActorRef) extends Actor with EchoInjector {
+class PipelineEchoHandler(connection: ActorRef) extends Actor with EchoInjector {
 
-  val eventHandler = echoActor
-  val commandHandler = echoServer
+  val echoServer = context.actorOf(Props(new EchoServer(self) with ActorLogging))
+
+  val eventHandler = echoServer
+  val commandHandler = self
 
   import Tcp._
 
   def receive = {
-    case Received(data) =>
-      injector.injectEvent(data)
+    // * Above  -- Cmd --> Below
     case m: Echo =>
       injector.injectCommand(m)
+    // Above  -- Cmd --> * Below
+    case Success(data: ByteString) =>
+      connection ! Write(data)
+    // Above <-- Evt --  Below *
+    case Received(data) =>
+      injector.injectEvent(data)
     case PeerClosed =>
       context stop self
   }
 }
 
-class EchoServer extends Actor {
+case class Reply(m: Echo)
+
+class EchoServer(destination: ActorRef) extends Actor {
   def receive = {
-    case m: Echo =>
-      sender ! m
+    case Success(m: Echo) =>
+      destination ! m
   }
 }
